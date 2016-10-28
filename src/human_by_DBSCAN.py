@@ -10,13 +10,12 @@ from math import sin,cos,atan2,pi,sqrt
 import matplotlib.pyplot as plt
 
 from ellipse2d import Ellipse2d
-
 from sklearn.cluster import DBSCAN
 
-import matplotlib.pyplot as plt
+# Class which handles tracking and contains the subscriber and publisher
 
 class HumanTracker:
-
+    # Initialize with the topic to subscribe to and 
     def __init__(self, scan_topic, max_size=1.0, min_size=0.01 ):
 
         self.max_size = max_size
@@ -26,15 +25,18 @@ class HumanTracker:
 
         self.scan_sub = rospy.Subscriber(self.scan_topic, LaserScan, self.find_in_scan)
 
-        self.file_name = "../data/DBSCAN_test.txt"
-        self.file_target = open(self.file_name, 'w')
-        #self.file_target.write("THIS IS A TEST")
+        # File output for testing
+        # self.file_name = "../data/DBSCAN_test.txt"
+        # self.file_target = open(self.file_name, 'w')
+        
 
     def shutdown(self):
         self.file_target.close()
 
+    # Function called on recieving a laser scan
     def find_in_scan(self, data):
 
+        # Convert scan into x-y points
         scan_xy = []
 
         angle = data.angle_min
@@ -47,18 +49,21 @@ class HumanTracker:
                 scan_xy.append([cos(angle)*r, sin(angle)*r])
             angle += incr
 
+        # Using DBSCAN Algorithm to cluster points
+        # eps tells size of the neigberhood and min tells how many samples
+        # need to be there for cluster to count
         db = DBSCAN(eps = 1.5, min_samples = 5).fit(scan_xy)
         labels = db.labels_
 
         #print(labels)
-
+        # Number of clusters - removing -1 because that labels noise
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
 
-        
-
+        # Grouping points into lists
         groups = [[] for ii in range(n_clusters)]
 
         for ii, item in enumerate(labels):
+            # Label -1 represents noise in DBSCAN algorithm
             if item != -1:
                 groups[item].append(scan_xy[ii])
 
@@ -67,19 +72,23 @@ class HumanTracker:
 
         colors = plt.cm.Spectral(np.linspace(0, 1, n_clusters))
 
+        # Go through all groups and see if the are humans
         for ii, item in enumerate(groups):
             if len(item) > 0:
 
                 try:
+                    # Fitting ellipse to the point set - Code from ellipse2d.py
                     ellipse = Ellipse2d()
                     ellipse.fit(item)
 
-                    if 2.5 < ellipse.center[0] < 4.0:
-                        print "actual human!"
-                        print ellipse
-
+                    # Checking size and location of ellipse - want roughly human sized
                     if self.is_valid_person_ellipse(ellipse, self.max_size, self.min_size):
                         if not(-0.5 < sqrt(ellipse.center[0] ** 2 + ellipse.center[1] ** 2) < 0.5):
+                            # Do here what we want when a human is found
+                            # TODO:
+                            #   - Write test for distance of center
+                            #   - Write code to tell system to stop if human too close
+
                             people_count += 1
                             print "Finding Human: ", people_count
                             self.file_target.write(str(ellipse.center[0].real))
@@ -91,9 +100,7 @@ class HumanTracker:
                             #plt.plot(ellipse.center[0],ellipse.center[1],'r+')
                             #x,y = apply(zip,item)
                             #plt.scatter(x,y,c=colors[ii])
-                            #print ellipse
-                        
-
+                            #print ellipse                  
                 except:
                     pass
 
@@ -114,9 +121,6 @@ class HumanTracker:
     def is_valid_person_ellipse(self, ellipse, max_size=1.0, min_size=0.01):
         # Validity is measured by it being a real ellipse, with 
         #   values in the plausible range for representing a human
-
-        #print ellipse.a
-        #print ellipse.b
 
         if (ellipse.is_valid() and 
             (min_size < ellipse.a < max_size) and 
